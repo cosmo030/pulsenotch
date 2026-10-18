@@ -1,0 +1,14 @@
+# build output
+bin/
+obj/
+publish/
+
+# editors / IDEs
+.vs/
+.vscode/
+*.user
+*.suo
+*_wpftmp.csproj
+
+# logs and local data (settings and the login token live in %APPDATA%\SpotifyNotch, outside the repo)
+*.log
