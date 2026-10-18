@@ -10,7 +10,7 @@ names = {
     "skip-back": "SkipBack", "play": "Play", "pause": "Pause", "skip-forward": "SkipForward",
     "volume-2": "Volume", "shuffle": "Shuffle", "repeat": "Repeat", "heart": "Heart",
     "repeat-1": "Repeat1", "list-music": "ListMusic", "monitor-speaker": "MonitorSpeaker", "chevron-left": "ChevronLeft",
-    "settings": "Settings", "grip-vertical": "Grip", "x": "X", "rotate-ccw": "Reset",
+    "settings": "Settings", "audio-lines": "AudioLines", "eye": "Eye", "eye-off": "EyeOff", "grip-vertical": "Grip", "x": "X", "rotate-ccw": "Reset",
     "check": "Check", "monitor": "Monitor", "smartphone": "Smartphone", "speaker": "Speaker", "tv": "Tv",
 }
 

@@ -46,7 +46,7 @@ public partial class App : Application
             bool demo = e.Args.Contains("--demo");
             bool openAtStart = e.Args.Contains("--open");
 
-            var media = new MediaService(demo ? "" : settings.SourceFilter);
+            var media = new MediaService(settings);
             var spotify = new SpotifyFeatures(settings.SpotifyClientId, demo); // demo mode fakes everything and never talks to Spotify
             _window = new NotchWindow(settings, media, spotify);
             _window.EnsureHandle();

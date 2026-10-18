@@ -265,7 +265,10 @@
 
                     <!-- Web API extras: only shown once Spotify is connected -->
                     <StackPanel x:Name="LeftExtras" Orientation="Horizontal" HorizontalAlignment="Left"
-                                VerticalAlignment="Center" Visibility="Collapsed">
+                                VerticalAlignment="Center">
+                        <Button x:Name="SourcesBtn" Style="{StaticResource SmallBtn}" ToolTip="Sources: which app the notch follows">
+                            <local:LucideIcon Data="{StaticResource Icon.AudioLines}" Width="17" Height="17"/>
+                        </Button>
                         <Button x:Name="QueueBtn" Style="{StaticResource SmallBtn}" ToolTip="Up next">
                             <local:LucideIcon Data="{StaticResource Icon.ListMusic}" Width="17" Height="17"/>
                         </Button>

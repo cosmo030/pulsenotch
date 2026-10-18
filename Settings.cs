@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -42,8 +43,14 @@ public sealed class Settings
     /// <summary>Keep the background still (no drifting wave).</summary>
     public bool ReduceMotion { get; set; } = false;
 
-    /// <summary>Only follow media sessions / audio sessions from this app. Empty = any app.</summary>
-    public string SourceFilter { get; set; } = "Spotify";
+    /// <summary>
+    /// Which app the notch follows: empty = automatic (whatever is playing), otherwise the media-session id of the app you pinned
+    /// (e.g. "Spotify.exe", "Brave"). Set from the Sources page.
+    /// </summary>
+    public string PinnedSource { get; set; } = "";
+
+    /// <summary>Apps the notch ignores (media-session ids). Managed from the Sources page.</summary>
+    public List<string> IgnoredApps { get; set; } = new();
 
     /// <summary>Reserved for the Web API features (like button, devices, queue).</summary>
     public string SpotifyClientId { get; set; } = "";

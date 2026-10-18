@@ -294,7 +294,7 @@ public partial class NotchWindow : Window
         if (_prewarm && !_inPrewarm) CancelPrewarm();
         var previous = State;
         State = s;
-        if (s == NotchState.Expanded && previous != NotchState.Expanded) _sp.RequestRefresh(0);
+        if (s == NotchState.Expanded && previous != NotchState.Expanded && _media.Current.IsSpotify) _sp.RequestRefresh(0);
 
         if (s != NotchState.Hidden && !IsVisible)
         {
@@ -327,6 +327,12 @@ public partial class NotchWindow : Window
     {
         // a freshly opened notch shows the current track straight away, with no slide
         ShowArt(_media.Current.Art, animate: false);
+        // a cover fade that was cut short when the notch last closed (or during the startup warm-up) must not stay invisible
+        ArtImage.Opacity = 1;
+        ArtNewShift.X = 0;
+        ArtPrev.Opacity = 0;
+        ArtPrev.Source = null;
+        ArtPrevShift.X = 0;
         _artT = 1;
         _textT = 1;
         TitleClip.Opacity = 1;
@@ -664,7 +670,7 @@ public partial class NotchWindow : Window
         string title = has ? np.Title : "Nothing playing";
         bool trackChanged = title != TitleText.Text;
         TitleText.Text = title;
-        if (trackChanged && State == NotchState.Expanded) _sp.RequestRefresh(700); // liked state for the new track
+        if (trackChanged && State == NotchState.Expanded && np.IsSpotify) _sp.RequestRefresh(700); // liked state for the new track
 
         ArtistText.Inlines.Clear();
         if (has)
@@ -672,8 +678,11 @@ public partial class NotchWindow : Window
             ArtistText.Inlines.Add(new Run(np.Artist));
             if (np.Album.Length > 0 && np.Album != np.Title)
                 ArtistText.Inlines.Add(new Run("  ·  " + np.Album) { Foreground = new SolidColorBrush(Color.FromArgb(0x70, 255, 255, 255)) });
+            // which app this is, when it is not Spotify ("Slyje · Brave")
+            if (!np.IsSpotify && np.SourceName.Length > 0)
+                ArtistText.Inlines.Add(new Run((np.Artist.Length > 0 ? "  ·  " : "") + np.SourceName) { Foreground = new SolidColorBrush(Color.FromArgb(0x70, 255, 255, 255)) });
         }
-        else ArtistText.Inlines.Add(new Run("Start something in Spotify"));
+        else ArtistText.Inlines.Add(new Run("Play something in any media app"));
 
         PeekText.Text = has ? (np.Artist.Length > 0 ? $"{np.Title}  ·  {np.Artist}" : np.Title) : "Nothing playing";
         if (trackChanged)
@@ -688,7 +697,10 @@ public partial class NotchWindow : Window
         }
 
         ShowArt(np.Art, visible);
-        PrevBtn.IsEnabled = NextBtn.IsEnabled = PlayBtn.IsEnabled = np.HasSession;
+        PlayBtn.IsEnabled = np.HasSession;
+        PrevBtn.IsEnabled = np.HasSession && np.CanPrevious; // browsers, for example, cannot skip
+        NextBtn.IsEnabled = np.HasSession && np.CanNext;
+        Track.IsHitTestVisible = np.CanSeek && !np.NoDuration;
 
         _playTarget = np.IsPlaying ? 1 : 0;
         if (!visible)
@@ -699,6 +711,7 @@ public partial class NotchWindow : Window
 
         _accentTarget = np.Art != null ? np.Accent : ArtColor.Fallback;
         UpdateWaveTargets();
+        ApplySpotifyStateCore(); // heart, shuffle, queue... only make sense for Spotify
 
         _shownDurSec = -1;
         _shownPosSec = -1;
@@ -798,6 +811,12 @@ public partial class NotchWindow : Window
     void UpdateProgress()
     {
         var np = _media.Current;
+        if (np.NoDuration)
+        {
+            ProgFill.Width = 0;
+            if (_shownPosSec != -2) { _shownPosSec = -2; _shownDurSec = -2; PosText.Text = "LIVE"; DurText.Text = ""; }
+            return;
+        }
         double dur = np.Duration.TotalSeconds;
         var pos = _scrubbing ? TimeSpan.FromSeconds(_scrubFrac * dur) : np.PositionNow(DateTimeOffset.UtcNow);
         double frac = dur > 0 ? Clamp01(pos.TotalSeconds / dur) : 0;
@@ -811,6 +830,108 @@ public partial class NotchWindow : Window
         if (ds != _shownDurSec) { _shownDurSec = ds; DurText.Text = Fmt(np.Duration); }
     }
 
+    // ---- Sources page: which app the notch follows ---------------------------------------------------------
+
+    async Task LoadSourcesAsync()
+    {
+        var sources = await _media.GetSourcesAsync();
+        if (_page != PageKind.Sources) return;
+
+        var rows = new List<UIElement> { MakeAutoRow(string.IsNullOrEmpty(_media.PinnedSource)) };
+        foreach (var s in sources.OrderByDescending(x => x.IsActive).ThenByDescending(x => x.IsPlaying))
+            rows.Add(MakeSourceRow(s));
+        if (sources.Count == 0) rows.Add(MakeNote("No app is using the media controls right now. Play something in Spotify, a browser, Apple Music and so on."));
+        SetRows(rows.ToArray());
+        PageCount.Text = sources.Count == 1 ? "1 app" : $"{sources.Count} apps";
+    }
+
+    UIElement MakeAutoRow(bool selected)
+    {
+        var grid = new Grid { Height = 36 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(29) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        grid.Children.Add(new LucideIcon
+        {
+            Data = (Geometry)FindResource("Icon.Check"),
+            Width = 16,
+            Height = 16,
+            Foreground = GreenBrush,
+            Opacity = selected ? 1 : 0,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(new TextBlock { Text = "Auto", FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White });
+        text.Children.Add(new TextBlock { Text = "Follows whatever is playing", FontSize = 11.5, Foreground = DimBrush });
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+
+        var btn = new Button { Style = (Style)FindResource("RowBtn"), Height = 38, Content = grid };
+        btn.Click += async (_, _) => { _media.Pin(null); ShowToast("Following whatever is playing"); await LoadSourcesAsync(); };
+        return btn;
+    }
+
+    UIElement MakeSourceRow(SourceInfo s)
+    {
+        bool pinned = string.Equals(_media.PinnedSource, s.Id, StringComparison.OrdinalIgnoreCase);
+        Brush tint = s.IsActive && !s.Hidden ? GreenBrush : Brushes.White;
+
+        var grid = new Grid { Height = 40 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(29) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        grid.Children.Add(new LucideIcon
+        {
+            Data = (Geometry)FindResource(s.IsPlaying ? "Icon.AudioLines" : "Icon.Pause"),
+            Width = 16,
+            Height = 16,
+            Foreground = s.IsPlaying ? tint : DimBrush,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        var nameLine = new TextBlock { FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = tint, TextTrimming = TextTrimming.CharacterEllipsis };
+        nameLine.Inlines.Add(new Run(s.Name));
+        if (pinned) nameLine.Inlines.Add(new Run("  ·  pinned") { FontWeight = FontWeights.Normal, Foreground = DimBrush });
+        if (s.Hidden) nameLine.Inlines.Add(new Run("  ·  hidden") { FontWeight = FontWeights.Normal, Foreground = DimBrush });
+        text.Children.Add(nameLine);
+
+        string detail = s.Title.Length == 0 ? "Nothing playing" : s.Artist.Length > 0 ? $"{s.Title}  ·  {s.Artist}" : s.Title;
+        text.Children.Add(new TextBlock { Text = detail, FontSize = 11.5, Foreground = DimBrush, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) });
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+
+        var hide = new Button
+        {
+            Style = (Style)FindResource("SmallBtn"),
+            Width = 28,
+            Height = 28,
+            ToolTip = s.Hidden ? "Show this app again" : "Never follow this app",
+            Content = new LucideIcon { Data = (Geometry)FindResource(s.Hidden ? "Icon.Eye" : "Icon.EyeOff"), Width = 15, Height = 15 },
+        };
+        hide.Click += async (_, _) =>
+        {
+            _media.SetHidden(s.Id, !s.Hidden);
+            ShowToast(s.Hidden ? $"Following {s.Name} again" : $"Ignoring {s.Name}");
+            await LoadSourcesAsync();
+        };
+        Grid.SetColumn(hide, 2);
+        grid.Children.Add(hide);
+
+        var btn = new Button { Style = (Style)FindResource("RowBtn"), Height = 42, Content = grid, Opacity = s.Hidden ? 0.55 : 1 };
+        btn.Click += async (_, _) =>
+        {
+            _media.Pin(s.Id);
+            ShowToast($"Following {s.Name}");
+            await LoadSourcesAsync();
+        };
+        return btn;
+    }
+
     // ---- background settings page --------------------------------------------------------------------
 
     static readonly Brush PageOpaqueBrush = FrozenBrush(Color.FromArgb(0xFF, 5, 5, 7));
@@ -821,6 +942,7 @@ public partial class NotchWindow : Window
     void WireBackgroundSettings()
     {
         SettingsBtn.Click += (_, _) => _ = OpenPageAsync(PageKind.Settings);
+        SourcesBtn.Click += (_, _) => _ = OpenPageAsync(PageKind.Sources);
         DotsToggle.Click += (_, _) => { _settings.DotGrid = DotsToggle.IsChecked == true; _settings.Save(); };
         BlobsToggle.Click += (_, _) => { _settings.Blobs = BlobsToggle.IsChecked == true; _settings.Save(); UpdateBlobControlsEnabled(); };
         StillToggle.Click += (_, _) => { _settings.ReduceMotion = StillToggle.IsChecked == true; _settings.Save(); };
@@ -887,7 +1009,7 @@ public partial class NotchWindow : Window
     static readonly Brush GreenBrush = FrozenBrush(Color.FromRgb(0x1E, 0xD7, 0x60));
     static Brush FrozenBrush(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
 
-    enum PageKind { None, Devices, Queue, Settings }
+    enum PageKind { None, Devices, Queue, Settings, Sources }
     PageKind _page;
     double _pageMix, _pageTarget;
     TimeSpan _toastAt = TimeSpan.FromDays(-1);
@@ -919,10 +1041,12 @@ public partial class NotchWindow : Window
 
     void ApplySpotifyStateCore()
     {
+        bool spotify = _media.Current.IsSpotify;
         bool connected = _sp.Enabled && _sp.Connected;
-        var shown = connected ? Visibility.Visible : Visibility.Collapsed;
-        LeftExtras.Visibility = RightExtras.Visibility = ShuffleBtn.Visibility = RepeatBtn.Visibility = shown;
-        ConnectBtn.Visibility = _sp.Enabled && !_sp.Connected ? Visibility.Visible : Visibility.Collapsed;
+        var shown = connected && spotify ? Visibility.Visible : Visibility.Collapsed;
+        RightExtras.Visibility = ShuffleBtn.Visibility = RepeatBtn.Visibility = QueueBtn.Visibility = DevicesBtn.Visibility = shown;
+        LeftExtras.Visibility = Visibility.Visible; // the Sources button is always there
+        ConnectBtn.Visibility = _sp.Enabled && !_sp.Connected && spotify ? Visibility.Visible : Visibility.Collapsed;
 
         HeartIcon.Filled = _sp.Liked;
         HeartBtn.Foreground = _sp.Liked ? GreenBrush : DimBrush;
@@ -943,7 +1067,7 @@ public partial class NotchWindow : Window
         if (_qApplying) return;
         ResetQueueState();
         _page = kind;
-        PageTitle.Text = kind == PageKind.Devices ? "Devices" : kind == PageKind.Settings ? "Background" : "Up next";
+        PageTitle.Text = kind == PageKind.Devices ? "Devices" : kind == PageKind.Settings ? "Background" : kind == PageKind.Sources ? "Sources" : "Up next";
         PageCount.Text = "";
         PageFooter.Visibility = Visibility.Collapsed;
         PageScroll.ScrollToTop();
@@ -969,6 +1093,10 @@ public partial class NotchWindow : Window
             if (list == null) SetRows(MakeNote(error ?? "Couldn't load devices"));
             else if (list.Count == 0) SetRows(MakeNote("No devices found. Open Spotify on a device first."));
             else SetRows(list.Take(4).Select(MakeDeviceRow).ToArray());
+        }
+        else if (kind == PageKind.Sources)
+        {
+            await LoadSourcesAsync();
         }
         else
         {
@@ -1438,7 +1566,7 @@ public partial class NotchWindow : Window
     void OnWheel(object sender, MouseWheelEventArgs e)
     {
         if (_page != PageKind.None) return; // a page is open: let its list scroll instead of changing the volume
-        var v = VolumeService.Adjust(e.Delta > 0 ? 0.05f : -0.05f, _settings.SourceFilter);
+        var v = VolumeService.Adjust(e.Delta > 0 ? 0.05f : -0.05f, _media.Current.ProcessName); // the active app's own volume-mixer slider
         if (v is float vol)
         {
             VolText.Text = $"{(int)Math.Round(vol * 100)}%";

@@ -23,9 +23,9 @@ public sealed class NotchController
     readonly Timer _hoverTimer;
     readonly DispatcherTimer _housekeeping = new() { Interval = TimeSpan.FromSeconds(2) };
 
-    long _dwellStart = -1, _peekUntil, _lastInside, _lastProcessScan;
+    long _dwellStart = -1, _peekUntil, _lastInside;
     bool _everInside, _hoverRunning;
-    volatile bool _spotifyRunning = true, _fullscreen;
+    volatile bool _fullscreen;
 
     public NotchController(Settings settings, NotchWindow window, MediaService media)
     {
@@ -37,6 +37,7 @@ public sealed class NotchController
         _poll.Tick += (_, _) => VisibleTick();
         _housekeeping.Tick += (_, _) => Housekeeping();
         _media.TrackChanged += OnTrackChanged;
+        _media.SourceChanged += UpdateTimers; // an app with media appeared or went away: arm or disarm the hover check
         _housekeeping.Start();
         Housekeeping();
     }
@@ -77,7 +78,7 @@ public sealed class NotchController
         if (visible && !_poll.IsEnabled) _poll.Start();
         else if (!visible && _poll.IsEnabled) _poll.Stop();
 
-        bool hoverActive = !visible && _settings.HoverEnabled && _spotifyRunning && !_fullscreen;
+        bool hoverActive = !visible && _settings.HoverEnabled && _media.HasAnySession && !_fullscreen;
         if (hoverActive != _hoverRunning)
         {
             _hoverRunning = hoverActive;
@@ -89,18 +90,6 @@ public sealed class NotchController
     {
         _window.Watchdog();
         _fullscreen = Native.IsFullscreenAppActive();
-        if (string.IsNullOrWhiteSpace(_settings.SourceFilter) || _media.Current.HasSession)
-        {
-            // an active media session means the app is running; no need to scan processes
-            _spotifyRunning = true;
-        }
-        else if (Environment.TickCount64 - _lastProcessScan >= 6000)
-        {
-            _lastProcessScan = Environment.TickCount64;
-            var procs = Process.GetProcessesByName(_settings.SourceFilter);
-            _spotifyRunning = procs.Length > 0;
-            foreach (var p in procs) p.Dispose();
-        }
         UpdateTimers();
     }
 
@@ -108,7 +97,7 @@ public sealed class NotchController
     void HoverTick()
     {
         if (_window.State != NotchState.Hidden) return;
-        if (!_settings.HoverEnabled || !_spotifyRunning || _fullscreen) { _dwellStart = -1; return; }
+        if (!_settings.HoverEnabled || !_media.HasAnySession || _fullscreen) { _dwellStart = -1; return; }
 
         Native.GetCursorPos(out var p);
         double cx = p.X / _window.Scale;
