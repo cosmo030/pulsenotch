@@ -943,6 +943,7 @@ public partial class NotchWindow : Window
     {
         SettingsBtn.Click += (_, _) => _ = OpenPageAsync(PageKind.Settings);
         SourcesBtn.Click += (_, _) => _ = OpenPageAsync(PageKind.Sources);
+        QuitBtn.Click += (_, _) => Application.Current.Shutdown();
         DotsToggle.Click += (_, _) => { _settings.DotGrid = DotsToggle.IsChecked == true; _settings.Save(); };
         BlobsToggle.Click += (_, _) => { _settings.Blobs = BlobsToggle.IsChecked == true; _settings.Save(); UpdateBlobControlsEnabled(); };
         StillToggle.Click += (_, _) => { _settings.ReduceMotion = StillToggle.IsChecked == true; _settings.Save(); };
@@ -1067,12 +1068,13 @@ public partial class NotchWindow : Window
         if (_qApplying) return;
         ResetQueueState();
         _page = kind;
-        PageTitle.Text = kind == PageKind.Devices ? "Devices" : kind == PageKind.Settings ? "Background" : kind == PageKind.Sources ? "Sources" : "Up next";
+        PageTitle.Text = kind == PageKind.Devices ? "Devices" : kind == PageKind.Settings ? "Settings" : kind == PageKind.Sources ? "Sources" : "Up next";
         PageCount.Text = "";
         PageFooter.Visibility = Visibility.Collapsed;
         PageScroll.ScrollToTop();
         bool settings = kind == PageKind.Settings;
         _settingsPage = settings;
+        QuitBtn.Visibility = settings ? Visibility.Visible : Visibility.Collapsed;
         PageScroll.Visibility = settings ? Visibility.Collapsed : Visibility.Visible;
         SettingsRows.Visibility = settings ? Visibility.Visible : Visibility.Collapsed;
         PagePanel.Background = settings ? PageGlassBrush : PageOpaqueBrush;

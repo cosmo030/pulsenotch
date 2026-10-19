@@ -9,12 +9,17 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>assets\pulsenotch.ico</ApplicationIcon>
     <AssemblyName>SpotifyNotch</AssemblyName>
     <RootNamespace>SpotifyNotch</RootNamespace>
     <TieredPGO>true</TieredPGO>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="assets\pulsenotch.ico" LogicalName="pulsenotch.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />

@@ -74,6 +74,13 @@ internal sealed class TrayIcon : IDisposable
 
     static SD.Icon MakeIcon()
     {
+        try // the app icon, in the size the tray wants
+        {
+            using var res = typeof(TrayIcon).Assembly.GetManifestResourceStream("pulsenotch.ico");
+            if (res != null) return new SD.Icon(res, SWF.SystemInformation.SmallIconSize);
+        }
+        catch { /* fall back to the drawn glyph below */ }
+
         using var bmp = new SD.Bitmap(32, 32);
         using (var g = SD.Graphics.FromImage(bmp))
         {
